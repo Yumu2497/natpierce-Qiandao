@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+debug
+
+# Virtual environments
+.venv
+
+# Environment variables (包含敏感信息)
+.env
+
+# Screenshots
+signin_*.png
+error_*.png
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

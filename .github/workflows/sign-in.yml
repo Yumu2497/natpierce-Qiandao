@@ -1,0 +1,73 @@
+name: Daily Sign In
+
+on:
+  schedule:
+    # 每天北京时间 00:00 运行（UTC 时间 16:00）
+    # 使用 cron 语法: 分钟 小时 日 月 星期
+    - cron: '0 16 * * *'
+  
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  sign-in:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+      
+      - name: 设置 Python 环境
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+      
+      - name: 安装系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            chromium-browser \
+            fonts-wqy-zenhei \
+            fonts-wqy-microhei \
+            libxcb1 \
+            libxkbcommon0 \
+            libx11-xcb1 \
+            libxcb-dri3-0 \
+            libdrm2 \
+            libgbm1 \
+            libnss3 \
+            libxcomposite1 \
+            libxrandr2 \
+            libasound2 \
+            libpango-1.0-0 \
+            libcairo2 \
+            libatk1.0-0 \
+            libgtk-3-0
+      
+      - name: 安装 Python 依赖
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: 安装 Playwright 浏览器
+        run: |
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
+      
+      - name: 运行签到脚本
+        env:
+          SIGN_IN_USERNAME: ${{ secrets.SIGN_IN_USERNAME }}
+          SIGN_IN_PASSWORD: ${{ secrets.SIGN_IN_PASSWORD }}
+        run: |
+          python sign_in.py
+      
+      - name: 上传签到截图
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signin-screenshots
+          path: |
+            signin_*.png
+            error_*.png
+          retention-days: 30
