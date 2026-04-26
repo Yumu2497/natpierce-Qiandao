@@ -22,12 +22,11 @@ jobs:
         with:
           python-version: '3.13'
           cache: 'pip'
-      
+        
       - name: 安装系统依赖
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            chromium-browser \
             fonts-wqy-zenhei \
             fonts-wqy-microhei \
             libxcb1 \
@@ -39,7 +38,7 @@ jobs:
             libnss3 \
             libxcomposite1 \
             libxrandr2 \
-            libasound2 \
+            libasound2t64 \
             libpango-1.0-0 \
             libcairo2 \
             libatk1.0-0 \
