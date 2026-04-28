@@ -9,6 +9,7 @@ debug
 
 # Virtual environments
 .venv
+.codex*
 
 # Environment variables (包含敏感信息)
 .env
@@ -26,3 +27,4 @@ error_*.png
 # OS
 .DS_Store
 Thumbs.db
+

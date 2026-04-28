@@ -27,6 +27,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            xvfb \
+            ffmpeg \
             fonts-wqy-zenhei \
             fonts-wqy-microhei \
             libxcb1 \
@@ -58,15 +60,37 @@ jobs:
         env:
           SIGN_IN_USERNAME: ${{ secrets.SIGN_IN_USERNAME }}
           SIGN_IN_PASSWORD: ${{ secrets.SIGN_IN_PASSWORD }}
+          HEADLESS: "False"
         run: |
+          export DISPLAY=:99
+          Xvfb :99 -screen 0 1280x720x24 > xvfb.log 2>&1 &
+          XVFB_PID=$!
+          sleep 2
+          ffmpeg -y -video_size 1280x720 -framerate 15 -f x11grab -i :99.0 -pix_fmt yuv420p sign-in-recording.mp4 > ffmpeg.log 2>&1 &
+          FFMPEG_PID=$!
+
+          set +e
           python sign_in.py
+          EXIT_CODE=$?
+          set -e
+
+          kill -INT $FFMPEG_PID || true
+          wait $FFMPEG_PID || true
+          kill $XVFB_PID || true
+          wait $XVFB_PID || true
+
+          exit $EXIT_CODE
       
       - name: 上传签到截图
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: signin-screenshots
+          name: signin-debug-assets
           path: |
             signin_*.png
             error_*.png
+            debug/**
+            sign-in-recording.mp4
+            xvfb.log
+            ffmpeg.log
           retention-days: 30

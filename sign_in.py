@@ -3,9 +3,9 @@
 使用 Playwright 和 ddddocr 实现自动登录、滑块验证和签到
 """
 import asyncio
-import sys
 import logging
 from datetime import datetime
+from pathlib import Path
 from playwright.async_api import async_playwright, Page
 from config.settings import Config
 from slider_solver import SliderCaptchaSolver
@@ -29,16 +29,23 @@ class SignInBot:
     
     async def init_browser(self, playwright):
         """初始化浏览器"""
+        video_dir = Path("debug") / "playwright-videos"
+        video_dir.mkdir(parents=True, exist_ok=True)
+
         browser = await playwright.chromium.launch(
             headless=self.config.HEADLESS,
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
+                "--window-size=1280,720",
             ]
         )
         
         context = await browser.new_context(
-            viewport={"width": self.config.WINDOW_WIDTH, "height": self.config.WINDOW_HEIGHT},
+            viewport={"width": 1280, "height": 720},
+            device_scale_factor=1,
+            record_video_dir=str(video_dir),
+            record_video_size={"width": 1280, "height": 720},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         

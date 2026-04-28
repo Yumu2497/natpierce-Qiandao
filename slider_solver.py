@@ -1,12 +1,9 @@
 import io
-import os
-import time
 import random
 import base64
 import logging
 from datetime import datetime
 from pathlib import Path
-import numpy as np
 from PIL import Image
 from playwright.async_api import Page
 import ddddocr
@@ -118,7 +115,41 @@ class SliderCaptchaSolver:
         else:
             return None
     
-    def calculate_slide_distance(self, bg_bytes: bytes, slider_bytes: bytes) -> dict:
+    async def get_captcha_metrics(self) -> dict:
+        """获取验证码图片在页面上的实际渲染尺寸。"""
+        bg_img = await self.page.query_selector("img.yidun_bg-img")
+        if not bg_img:
+            raise Exception("未找到验证码背景图元素")
+
+        bg_metrics = await bg_img.evaluate("""
+            (img) => ({
+                width: img.getBoundingClientRect().width,
+                height: img.getBoundingClientRect().height,
+                naturalWidth: img.naturalWidth || 0,
+                naturalHeight: img.naturalHeight || 0,
+            })
+        """)
+
+        track = await self.page.query_selector("div.yidun_slider")
+        track_metrics = None
+        if track:
+            track_metrics = await track.evaluate("""
+                (el) => ({
+                    width: el.getBoundingClientRect().width,
+                    height: el.getBoundingClientRect().height,
+                })
+            """)
+
+        return {
+            "bg_width": bg_metrics["width"],
+            "bg_height": bg_metrics["height"],
+            "bg_natural_width": bg_metrics["naturalWidth"],
+            "bg_natural_height": bg_metrics["naturalHeight"],
+            "track_width": track_metrics["width"] if track_metrics else None,
+            "track_height": track_metrics["height"] if track_metrics else None,
+        }
+
+    async def calculate_slide_distance(self, bg_bytes: bytes, slider_bytes: bytes) -> dict:
         """
         使用ddddocr计算需要滑动的距离
         返回: {"distance": int, "target_x": int, "target_y": int}
@@ -130,26 +161,33 @@ class SliderCaptchaSolver:
             target_y = result.get("target_y", 0)
             confidence = result.get("confidence", 0)
             
-            # 计算滑块宽度（从滑块图片获取）
-            from PIL import Image
-            import io
             slider_img = Image.open(io.BytesIO(slider_bytes))
             slider_width = slider_img.size[0]
+            bg_img = Image.open(io.BytesIO(bg_bytes))
+            bg_width = bg_img.size[0]
+            metrics = await self.get_captcha_metrics()
             
-            # 滑动距离 = 缺口位置 - 滑块宽度的一半
-            slide_distance = target_x - slider_width/4
+            rendered_bg_width = metrics["bg_width"] or bg_width
+            scale_ratio = rendered_bg_width / bg_width if bg_width else 1
+            slide_distance = target_x * scale_ratio
             
             # 保存验证码图片用于调试
             self._save_captcha_debug(bg_bytes, [target_x, target_y, 0, 0])
             
             logger.info(f"[OCR识别] 缺口坐标: x={target_x}, y={target_y}, 置信度: {confidence:.4f}")
-            logger.info(f"[OCR识别] 滑块宽度: {slider_width}px")
-            logger.info(f"[OCR识别] 需要滑动距离: {slide_distance}px (target_x - slider_half_width)")
+            logger.info(
+                f"[OCR识别] 原图宽度: {bg_width}px, 页面渲染宽度: {rendered_bg_width:.2f}px, 缩放比: {scale_ratio:.4f}"
+            )
+            logger.info(
+                f"[OCR识别] 滑块图片宽度: {slider_width}px, 滑轨宽度: {metrics['track_width']}"
+            )
+            logger.info(f"[OCR识别] 需要滑动距离: {slide_distance:.2f}px")
             
             return {
                 "distance": max(0, slide_distance),
                 "target_x": target_x,
                 "target_y": target_y,
+                "scale_ratio": scale_ratio,
             }
         except Exception as e:
             logger.error(f"[OCR识别] 失败: {e}")
@@ -187,6 +225,19 @@ class SliderCaptchaSolver:
             
         except Exception as e:
             logger.warning(f"[调试] 保存图片失败: {e}")
+
+    async def save_page_debug(self, prefix: str):
+        """保存当前页面截图，便于分析无头环境下的验证码状态。"""
+        try:
+            debug_dir = Path("debug")
+            debug_dir.mkdir(exist_ok=True)
+
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            screenshot_path = debug_dir / f"{prefix}_{timestamp}.png"
+            await self.page.screenshot(path=str(screenshot_path), full_page=True)
+            logger.info(f"[调试] 页面截图已保存: {screenshot_path}")
+        except Exception as e:
+            logger.warning(f"[调试] 保存页面截图失败: {e}")
     
     def get_slide_track(self, distance: int) -> list[dict]:
         """
@@ -277,14 +328,15 @@ class SliderCaptchaSolver:
         start_y = slider_box["y"] + slider_box["height"] / 2
         
         # 鼠标按下
-        await self.page.mouse.move(start_x, start_y)
+        await self.page.mouse.move(start_x, start_y, steps=random.randint(8, 15))
+        await self.page.wait_for_timeout(random.randint(80, 180))
         await self.page.mouse.down()
         
         # 按照轨迹滑动
         for point in track:
             move_x = start_x + point["x"]
             move_y = start_y + point["y"]
-            await self.page.mouse.move(move_x, move_y)
+            await self.page.mouse.move(move_x, move_y, steps=random.randint(2, 5))
             # 注意：这里的t是累计时间，我们需要计算每步的延迟
             if len(track) > 1:
                 await self.page.wait_for_timeout(random.randint(10, 30))
@@ -334,6 +386,7 @@ class SliderCaptchaSolver:
         logger.info("=" * 50)
         logger.info("开始处理滑块验证码")
         logger.info("=" * 50)
+        distance_offsets = [0, -4, 4, -7, 7]
         
         for attempt in range(self.config.SLIDER_RETRY_COUNT):
             logger.info(f"第 {attempt + 1}/{self.config.SLIDER_RETRY_COUNT} 次尝试")
@@ -342,11 +395,17 @@ class SliderCaptchaSolver:
                 # 获取验证码图片
                 bg_bytes, slider_bytes = await self.get_captcha_images()
                 logger.info(f"背景图大小: {len(bg_bytes)} bytes, 滑块图大小: {len(slider_bytes)} bytes")
+                await self.save_page_debug(f"captcha_page_before_attempt_{attempt + 1}")
                 
                 # 计算滑动距离
-                slide_info = self.calculate_slide_distance(bg_bytes, slider_bytes)
-                distance = slide_info["distance"]
-                logger.info(f"滑动距离: {distance}px, 缺口位置: ({slide_info['target_x']}, {slide_info['target_y']})")
+                slide_info = await self.calculate_slide_distance(bg_bytes, slider_bytes)
+                base_distance = slide_info["distance"]
+                offset = distance_offsets[min(attempt, len(distance_offsets) - 1)]
+                distance = max(0, round(base_distance + offset))
+                logger.info(
+                    f"滑动距离: {distance}px (基础距离: {base_distance:.2f}px, 偏移: {offset}px), "
+                    f"缺口位置: ({slide_info['target_x']}, {slide_info['target_y']})"
+                )
                 
                 # 生成滑动轨迹
                 track = self.get_slide_track(distance)
@@ -360,10 +419,12 @@ class SliderCaptchaSolver:
                     return True
                 else:
                     logger.info("✗ 验证失败，准备重试...")
+                    await self.save_page_debug(f"captcha_page_after_attempt_{attempt + 1}")
                     await self.page.wait_for_timeout(1500)
                     
             except Exception as e:
                 logger.error(f"✗ 出错: {e}，准备重试...")
+                await self.save_page_debug(f"captcha_page_error_attempt_{attempt + 1}")
                 await self.page.wait_for_timeout(1500)
         
         logger.error("=" * 50)
