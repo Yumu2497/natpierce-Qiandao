@@ -27,12 +27,13 @@ class Config:
     # 滑块验证配置
     SLIDER_RETRY_COUNT: int = 5  # 滑块验证重试次数
     SLIDER_OFFSET_RANGE: int = 5  # 滑块偏移容错范围（像素）
+    SLIDER_BASE_OFFSET: int = int(os.getenv("SLIDER_BASE_OFFSET", "-12"))  # 基础左移补偿
     
     # 浏览器配置
     # 先从 .env/环境变量读取，如果没有设置则默认为 True（无头模式）
     HEADLESS: bool = os.getenv("HEADLESS", "True").lower() in ("true", "1", "yes")
-    WINDOW_WIDTH: int = 1920
-    WINDOW_HEIGHT: int = 1080
+    WINDOW_WIDTH: int = 1280
+    WINDOW_HEIGHT: int = 720
     
     # 签到按钮选择器
     SIGN_IN_BUTTON_SELECTOR: str = "#qiandao"

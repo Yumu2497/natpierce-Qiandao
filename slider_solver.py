@@ -238,7 +238,7 @@ class SliderCaptchaSolver:
             logger.info(f"[调试] 页面截图已保存: {screenshot_path}")
         except Exception as e:
             logger.warning(f"[调试] 保存页面截图失败: {e}")
-    
+
     def get_slide_track(self, distance: int) -> list[dict]:
         """
         生成模拟人类滑动轨迹
@@ -386,7 +386,7 @@ class SliderCaptchaSolver:
         logger.info("=" * 50)
         logger.info("开始处理滑块验证码")
         logger.info("=" * 50)
-        distance_offsets = [0, -4, 4, -7, 7]
+        distance_offsets = [0, -4, 4, -8, 8]
         
         for attempt in range(self.config.SLIDER_RETRY_COUNT):
             logger.info(f"第 {attempt + 1}/{self.config.SLIDER_RETRY_COUNT} 次尝试")
@@ -400,10 +400,12 @@ class SliderCaptchaSolver:
                 # 计算滑动距离
                 slide_info = await self.calculate_slide_distance(bg_bytes, slider_bytes)
                 base_distance = slide_info["distance"]
-                offset = distance_offsets[min(attempt, len(distance_offsets) - 1)]
-                distance = max(0, round(base_distance + offset))
+                retry_offset = distance_offsets[min(attempt, len(distance_offsets) - 1)]
+                total_offset = self.config.SLIDER_BASE_OFFSET + retry_offset
+                distance = max(0, round(base_distance + total_offset))
                 logger.info(
-                    f"滑动距离: {distance}px (基础距离: {base_distance:.2f}px, 偏移: {offset}px), "
+                    f"滑动距离: {distance}px (基础距离: {base_distance:.2f}px, 基础补偿: {self.config.SLIDER_BASE_OFFSET}px, "
+                    f"重试补偿: {retry_offset}px, 总补偿: {total_offset}px), "
                     f"缺口位置: ({slide_info['target_x']}, {slide_info['target_y']})"
                 )
                 

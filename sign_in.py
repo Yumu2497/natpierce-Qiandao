@@ -37,15 +37,15 @@ class SignInBot:
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
-                "--window-size=1280,720",
+                f"--window-size={self.config.WINDOW_WIDTH},{self.config.WINDOW_HEIGHT}",
             ]
         )
         
         context = await browser.new_context(
-            viewport={"width": 1280, "height": 720},
+            viewport={"width": self.config.WINDOW_WIDTH, "height": self.config.WINDOW_HEIGHT},
             device_scale_factor=1,
             record_video_dir=str(video_dir),
-            record_video_size={"width": 1280, "height": 720},
+            record_video_size={"width": self.config.WINDOW_WIDTH, "height": self.config.WINDOW_HEIGHT},
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         )
         
